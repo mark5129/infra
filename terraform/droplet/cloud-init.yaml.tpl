@@ -1,7 +1,7 @@
 #cloud-config
 # Server bootstrap: hardening + Docker Engine
 # Rendered by Terraform templatefile() – only ${deploy_user} is substituted.
-# All other $${...} sequences become ${...} in the output (escaped for apt/shell).
+# All other $$${...} sequences become $${...} in the output (escaped for apt/shell).
 
 # ---------------------------------------------------------------------------
 # System update + base packages
