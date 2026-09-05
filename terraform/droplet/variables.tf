@@ -2,12 +2,6 @@
 # Input variables
 # ---------------------------------------------------------------------------
 
-variable "do_token" {
-  description = "DigitalOcean personal-access token (read+write)."
-  type        = string
-  sensitive   = true
-}
-
 variable "region" {
   description = "DigitalOcean region slug for the Droplet and related resources."
   type        = string

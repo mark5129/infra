@@ -9,13 +9,10 @@ terraform {
   }
 }
 
-# ---------------------------------------------------------------------------
-# Provider
-# ---------------------------------------------------------------------------
-
-provider "digitalocean" {
-  token = var.do_token
-}
+# No provider block here — a reusable module should not configure its own
+# provider. It inherits the default (non-aliased) "digitalocean" provider
+# from whichever root module calls it. Configure the provider once, in each
+# project's own root main.tf.
 
 # ---------------------------------------------------------------------------
 # Data – look up SSH keys by fingerprint

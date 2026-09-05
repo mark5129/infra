@@ -8,10 +8,27 @@ Originally lived duplicated inside `TravelPlanner/infra/` and
 ## Usage from a project repo
 
 ```hcl
+# In the project's own infra/main.tf — the provider is configured once, here,
+# and inherited automatically by the module (do NOT put a provider block
+# inside the module itself; a reusable module should never configure its own
+# provider).
+terraform {
+  required_version = ">= 1.5.0"
+  required_providers {
+    digitalocean = {
+      source  = "digitalocean/digitalocean"
+      version = "~> 2.36"
+    }
+  }
+}
+
+provider "digitalocean" {
+  token = var.do_token
+}
+
 module "server" {
   source = "git::https://github.com/mark5129/infra.git//terraform/droplet?ref=v1.0.0"
 
-  do_token        = var.do_token
   project_name    = "travelplanner"       # "smart-cart" for SuperMarketReceiptFinder
   droplet_name    = "travelplanner-prod"
   domain_name     = "markusheuer.com"
@@ -28,28 +45,32 @@ project's `terraform plan` produces.
 
 ## Variables
 
-See `variables.tf` — `do_token`, `domain_name`, `ssh_key_names`, `trusted_ssh_ips`, and
+See `variables.tf` — `domain_name`, `ssh_key_names`, `trusted_ssh_ips`, and
 `project_name`/`droplet_name` are required (no defaults, deliberately — a shared module
 should never silently default to another project's name). Everything else (`region`,
 `droplet_size`, `deploy_user`, `enable_dev_ports`, `create_www_record`,
-`create_api_record`, `environment`) has the same sane default it always had.
+`create_api_record`, `environment`) has the same sane default it always had. `do_token`
+is a root-level variable only (used to configure the provider) — the module itself never
+declares it, since it inherits the provider rather than configuring its own.
 
-## Migrating an existing project onto this module
+## Before your first `terraform apply` — check for an existing server first
 
-Moving existing resources under a `module "server" { ... }` block changes their state
-address. Applying that naively destroys and recreates the live droplet. Instead, for each
-resource:
+As far as we could tell, this Terraform (in either project) has never actually been
+applied — no state file, no configured backend, no trace of `terraform` having run on the
+server it supposedly provisions. That almost certainly means the server was created another
+way (by hand, through the DigitalOcean console) and this code documents the intended
+infrastructure rather than the thing that built it.
 
-```bash
-terraform state mv digitalocean_droplet.app                    'module.server.digitalocean_droplet.app'
-terraform state mv digitalocean_reserved_ip.app                'module.server.digitalocean_reserved_ip.app'
-terraform state mv digitalocean_reserved_ip_assignment.app     'module.server.digitalocean_reserved_ip_assignment.app'
-terraform state mv digitalocean_project.main                   'module.server.digitalocean_project.main'
-terraform state mv digitalocean_domain.root                    'module.server.digitalocean_domain.root'
-terraform state mv digitalocean_record.root_a                  'module.server.digitalocean_record.root_a'
-terraform state mv 'digitalocean_record.www[0]'                'module.server.digitalocean_record.www[0]'
-terraform state mv digitalocean_firewall.app                   'module.server.digitalocean_firewall.app'
-```
+**This matters because Terraform has no state to compare against.** A first `terraform
+apply` here won't detect or adopt an existing droplet/DNS records/firewall — it will just
+try to create new ones. If a matching droplet already exists, you'll end up with two.
+Before running `apply` for the first time:
 
-(Skip `www[0]`/`api[0]` moves for records you didn't create.) Then run `terraform plan` —
-it must report **zero changes**. Only apply from a clean, zero-diff plan.
+1. Check the DigitalOcean console (or `doctl compute droplet list` / `doctl projects list`)
+   for a droplet/project already matching this config's names.
+2. If one exists and you want Terraform to manage it going forward rather than create a
+   duplicate, use `terraform import` to bring each existing resource into state first
+   (`terraform import module.server.digitalocean_droplet.app <existing-id>`, etc.), then
+   `terraform plan` and confirm it reports zero changes before ever applying.
+3. If nothing exists yet, a plain `terraform init && terraform plan && terraform apply` is
+   fine — you'd be provisioning for the first time, not migrating anything.

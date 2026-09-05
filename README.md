@@ -46,12 +46,16 @@ two short, project-specific files built from the shared composite actions in
 truth for *which* services start on *which* branch; only the repeated shell blocks inside
 it are shared.
 
-## Terraform: migrating a project onto the shared module
+## Terraform
 
-See `terraform/droplet/README.md` — moving existing resources into `module "server" {...}`
-changes their state address. **Never `terraform apply` that change directly.** Run the
-`terraform state mv` commands listed there first, confirm `terraform plan` reports zero
-changes, and only then treat the migration as done.
+See `terraform/droplet/README.md`. As far as we could establish, this Terraform (in either
+project) has never actually been applied anywhere reachable from the server it documents —
+no state file, no backend, no trace of `terraform` ever running there — so each project's
+own `infra/` is being treated as intended infrastructure that hasn't been provisioned yet,
+not existing state to migrate. If that assumption turns out to be wrong (state turns up
+somewhere), read the "before your first apply" section in the module README before running
+anything — a first `apply` with no state won't adopt an existing droplet, it'll try to
+create a second one.
 
 ## Edge stack
 
