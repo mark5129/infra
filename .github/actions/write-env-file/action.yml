@@ -2,7 +2,7 @@ name: Write env file
 description: Writes a GitHub Secret's contents verbatim to a local env file, for docker compose's env_file.
 inputs:
   content:
-    description: The full contents of the env file (typically ${{ secrets.ENV_X }}).
+    description: The full contents of the env file (typically one of the repo's ENV_* secrets).
     required: true
   path:
     description: Destination path, e.g. .env.prod
