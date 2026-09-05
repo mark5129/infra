@@ -1,0 +1,158 @@
+name: Issue Dependency Sync (reusable)
+
+on:
+  workflow_call: {}
+
+permissions:
+  issues: write
+
+jobs:
+  sync-dependency-labels:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sync blocked/unblocked labels from dependencies
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            const BLOCKED_LABEL = "blocked";
+            const UNBLOCKED_LABEL = "unblocked";
+
+            // Ensure labels exist so automation can apply them safely.
+            async function ensureLabel(name, color, description) {
+              try {
+                await github.rest.issues.getLabel({ owner, repo, name });
+              } catch (error) {
+                if (error.status === 404) {
+                  await github.rest.issues.createLabel({
+                    owner,
+                    repo,
+                    name,
+                    color,
+                    description
+                  });
+                } else {
+                  throw error;
+                }
+              }
+            }
+
+            function parseBlockedBy(issueBody) {
+              if (!issueBody) return [];
+
+              const dependencyLineMatch = issueBody.match(/-\s*Blocked by:\s*(.+)/i);
+              if (!dependencyLineMatch) return [];
+
+              const raw = dependencyLineMatch[1].trim();
+              if (!raw || raw.toLowerCase() === "none") return [];
+
+              const refs = raw.match(/#(\d+)/g) || [];
+              return refs.map((r) => Number(r.replace("#", ""))).filter((n) => Number.isInteger(n));
+            }
+
+            async function listAllOpenIssues() {
+              return github.paginate(github.rest.issues.listForRepo, {
+                owner,
+                repo,
+                state: "open",
+                per_page: 100
+              }).then((items) => items.filter((i) => !i.pull_request));
+            }
+
+            async function getIssue(issueNumber) {
+              const { data } = await github.rest.issues.get({
+                owner,
+                repo,
+                issue_number: issueNumber
+              });
+              return data;
+            }
+
+            async function setLabelState(issue, shouldBeBlocked) {
+              const existing = new Set((issue.labels || []).map((l) => typeof l === "string" ? l : l.name));
+              const toAdd = [];
+              const toRemove = [];
+
+              if (shouldBeBlocked) {
+                if (!existing.has(BLOCKED_LABEL)) toAdd.push(BLOCKED_LABEL);
+                if (existing.has(UNBLOCKED_LABEL)) toRemove.push(UNBLOCKED_LABEL);
+              } else {
+                if (!existing.has(UNBLOCKED_LABEL)) toAdd.push(UNBLOCKED_LABEL);
+                if (existing.has(BLOCKED_LABEL)) toRemove.push(BLOCKED_LABEL);
+              }
+
+              for (const label of toAdd) {
+                await github.rest.issues.addLabels({
+                  owner,
+                  repo,
+                  issue_number: issue.number,
+                  labels: [label]
+                });
+              }
+
+              for (const label of toRemove) {
+                try {
+                  await github.rest.issues.removeLabel({
+                    owner,
+                    repo,
+                    issue_number: issue.number,
+                    name: label
+                  });
+                } catch (error) {
+                  if (error.status !== 404) throw error;
+                }
+              }
+
+              return toAdd.length > 0 || toRemove.length > 0;
+            }
+
+            await ensureLabel(BLOCKED_LABEL, "e99695", "This issue is currently blocked");
+            await ensureLabel(UNBLOCKED_LABEL, "0e8a16", "This issue has no unresolved blockers");
+
+            const openIssues = await listAllOpenIssues();
+            const issueCache = new Map();
+
+            // Cache the event issue first to reduce API calls.
+            issueCache.set(context.payload.issue.number, context.payload.issue);
+
+            async function isBlockerResolved(issueNumber) {
+              if (!issueCache.has(issueNumber)) {
+                try {
+                  const blockerIssue = await getIssue(issueNumber);
+                  issueCache.set(issueNumber, blockerIssue);
+                } catch (error) {
+                  if (error.status === 404) {
+                    // Unknown reference: treat as unresolved to stay safe.
+                    return false;
+                  }
+                  throw error;
+                }
+              }
+
+              const blocker = issueCache.get(issueNumber);
+              return blocker.state === "closed";
+            }
+
+            let changedCount = 0;
+
+            for (const issue of openIssues) {
+              const blockers = parseBlockedBy(issue.body);
+
+              let blocked = false;
+              if (blockers.length > 0) {
+                for (const blockerNumber of blockers) {
+                  const resolved = await isBlockerResolved(blockerNumber);
+                  if (!resolved) {
+                    blocked = true;
+                    break;
+                  }
+                }
+              }
+
+              const changed = await setLabelState(issue, blocked);
+              if (changed) changedCount += 1;
+            }
+
+            core.info(`Dependency sync complete. Updated ${changedCount} issue(s).`);

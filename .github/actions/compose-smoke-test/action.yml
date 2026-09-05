@@ -1,0 +1,45 @@
+name: Compose smoke test
+description: Polls a URL until it responds successfully, or fails after a timeout.
+inputs:
+  url:
+    description: URL to poll, e.g. http://localhost:3002/api/health
+    required: true
+  retries:
+    description: Number of attempts before giving up.
+    required: false
+    default: "12"
+  interval-seconds:
+    description: Seconds to sleep between attempts.
+    required: false
+    default: "5"
+  basic-auth-user:
+    description: Optional HTTP basic-auth username (e.g. for a dev environment behind auth_basic).
+    required: false
+    default: ""
+  basic-auth-password:
+    description: Optional HTTP basic-auth password.
+    required: false
+    default: ""
+  label:
+    description: Human-readable name for log output, e.g. "Dev environment".
+    required: false
+    default: "Environment"
+runs:
+  using: composite
+  steps:
+    - name: Smoke test
+      shell: bash
+      run: |
+        AUTH_ARGS=()
+        if [ -n "${{ inputs.basic-auth-user }}" ]; then
+          AUTH_ARGS=(--user "${{ inputs.basic-auth-user }}:${{ inputs.basic-auth-password }}")
+        fi
+        for i in $(seq 1 "${{ inputs.retries }}"); do
+          if curl --fail --silent "${AUTH_ARGS[@]}" "${{ inputs.url }}" > /dev/null; then
+            echo "${{ inputs.label }} is up"
+            exit 0
+          fi
+          sleep "${{ inputs.interval-seconds }}"
+        done
+        TOTAL=$(( ${{ inputs.retries }} * ${{ inputs.interval-seconds }} ))
+        echo "${{ inputs.label }} failed to respond after ${TOTAL}s" && exit 1
