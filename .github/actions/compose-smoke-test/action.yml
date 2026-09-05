@@ -17,7 +17,12 @@ inputs:
     required: false
     default: ""
   basic-auth-password:
-    description: Optional HTTP basic-auth password.
+    description: >
+      Optional HTTP basic-auth password. GitHub prints resolved `with:` inputs to the log
+      verbatim — if this value came from a secret (e.g. extracted from an env file rather
+      than referenced directly as secrets.X), the calling workflow MUST
+      `echo "::add-mask::$VALUE"` before passing it here, or it will leak into the log
+      in plaintext.
     required: false
     default: ""
   label:
