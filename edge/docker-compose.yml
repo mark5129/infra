@@ -32,6 +32,7 @@ services:
     volumes:
       - ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
       - ../scripts/prod-nginx-init.sh:/docker-entrypoint.d/01-ensure-cert.sh
+      - ./nginx-cert-reload-watcher.sh:/docker-entrypoint.d/02-cert-reload-watcher.sh
       - certbot_webroot:/var/www/certbot:ro
       - certbot_certs:/etc/letsencrypt
     env_file: .env
