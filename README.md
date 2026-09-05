@@ -57,11 +57,14 @@ somewhere), read the "before your first apply" section in the module README befo
 anything — a first `apply` with no state won't adopt an existing droplet, it'll try to
 create a second one.
 
-## Edge stack
+## Edge stack — live
 
-`edge/` runs independently of any project's compose file, reusing the existing
-`travelplanner_web-*` networks and `travelplanner_certbot_*` volumes as `external: true` —
-so switching to it needs no cert reissuance and no changes to any project's own
-containers. See the cutover sequence in the description of the migration that introduced
-this repo (stop TravelPlanner's `nginx`/`certbot` containers, immediately start this stack,
-verify, then delete those two service blocks from TravelPlanner's compose file).
+`edge/` is the live nginx + certbot stack for every domain on the server (markusheuer.com,
+www, travelplanner., dev., test.) — TravelPlanner no longer owns nginx/certbot itself. It
+runs independently of any project's compose file, reusing the pre-existing
+`travelplanner_web-*` networks and `travelplanner_certbot_*` volumes as `external: true`,
+so the cutover needed no cert reissuance and no changes to any project's own containers.
+Portfolio's and TravelPlanner's hosting both depend on this stack now — if it's ever
+stopped, both go down with it. See `edge/nginx/default.conf.template` for the actual
+server blocks; add a new project by adding a server block here, not by touching any
+project's own compose file.
