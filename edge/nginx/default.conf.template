@@ -7,6 +7,18 @@
 # adding a server block here (and, if it needs a new upstream network, adding
 # that network below as `external: true`) — not touching any project's own
 # docker-compose file.
+#
+# Upstream hostnames are resolved dynamically (resolver + `set` + variable
+# proxy_pass) instead of as plain `proxy_pass http://host:port` targets.
+# Plain targets are resolved once, at nginx startup/config-test/reload time —
+# if that specific project's container happens to be stopped at that moment
+# (a dev/test environment that's intentionally down, a deploy mid-restart),
+# nginx fails its config test with "host not found in upstream" and refuses
+# to (re)start at all, taking every project behind this shared proxy down
+# with it. The dynamic form only resolves per-request, so a stopped upstream
+# just 502s for its own requests instead of breaking the whole stack.
+
+resolver 127.0.0.11 valid=10s ipv6=off;
 
 # Rate limiting zones
 limit_req_zone $binary_remote_addr zone=api_general:10m rate=20r/s;
@@ -56,7 +68,8 @@ server {
     add_header Referrer-Policy           "strict-origin-when-cross-origin"              always;
 
     location / {
-        proxy_pass         http://portfolio:3000;
+        set $upstream_portfolio http://portfolio:3000;
+        proxy_pass         $upstream_portfolio;
         proxy_http_version 1.1;
         proxy_set_header   Upgrade           $http_upgrade;
         proxy_set_header   Connection        "upgrade";
@@ -101,7 +114,8 @@ server {
                     application/atom+xml image/svg+xml;
 
     location /media/ {
-        proxy_pass http://minio:9000/travelplanner/;
+        set $upstream_tp_prod_media http://minio:9000/travelplanner/;
+        proxy_pass $upstream_tp_prod_media;
         proxy_http_version 1.1;
         proxy_set_header Host minio:9000;
         proxy_set_header Authorization "";
@@ -110,7 +124,8 @@ server {
     }
 
     location / {
-        proxy_pass         http://frontend-prod:3000;
+        set $upstream_tp_prod_frontend http://frontend-prod:3000;
+        proxy_pass         $upstream_tp_prod_frontend;
         proxy_http_version 1.1;
         proxy_set_header   Upgrade    $http_upgrade;
         proxy_set_header   Connection "upgrade";
@@ -124,7 +139,8 @@ server {
     location = /api/auth/login {
         limit_req zone=login_zone burst=5 nodelay;
         limit_conn addr 10;
-        proxy_pass         http://backend-prod:8000/auth/login;
+        set $upstream_tp_prod_backend http://backend-prod:8000;
+        proxy_pass         $upstream_tp_prod_backend/auth/login;
         proxy_http_version 1.1;
         proxy_set_header   Host              $host;
         proxy_set_header   X-Real-IP         $remote_addr;
@@ -136,7 +152,8 @@ server {
     location = /api/auth/register {
         limit_req zone=register_zone;
         limit_conn addr 10;
-        proxy_pass         http://backend-prod:8000/auth/register;
+        set $upstream_tp_prod_backend http://backend-prod:8000;
+        proxy_pass         $upstream_tp_prod_backend/auth/register;
         proxy_http_version 1.1;
         proxy_set_header   Host              $host;
         proxy_set_header   X-Real-IP         $remote_addr;
@@ -149,7 +166,8 @@ server {
         limit_req zone=api_general burst=40 nodelay;
         limit_conn addr 10;
         client_max_body_size 10M;
-        proxy_pass         http://backend-prod:8000/;
+        set $upstream_tp_prod_backend http://backend-prod:8000;
+        proxy_pass         $upstream_tp_prod_backend/;
         proxy_http_version 1.1;
         proxy_set_header   Host              $host;
         proxy_set_header   X-Real-IP         $remote_addr;
@@ -183,7 +201,8 @@ server {
     add_header Referrer-Policy           "strict-origin-when-cross-origin" always;
 
     location / {
-        proxy_pass         http://nginx-dev:80;
+        set $upstream_tp_dev_nginx http://nginx-dev:80;
+        proxy_pass         $upstream_tp_dev_nginx;
         proxy_http_version 1.1;
         proxy_set_header   Upgrade           $http_upgrade;
         proxy_set_header   Connection        "upgrade";
@@ -228,7 +247,8 @@ server {
                     application/atom+xml image/svg+xml;
 
     location /media/ {
-        proxy_pass http://minio:9000/travelplanner/;
+        set $upstream_tp_test_media http://minio:9000/travelplanner/;
+        proxy_pass $upstream_tp_test_media;
         proxy_http_version 1.1;
         proxy_set_header Host minio:9000;
         proxy_set_header Authorization "";
@@ -239,7 +259,8 @@ server {
     location = /api/auth/login {
         limit_req zone=login_zone burst=5 nodelay;
         limit_conn addr 10;
-        proxy_pass         http://backend-test:8000/auth/login;
+        set $upstream_tp_test_backend http://backend-test:8000;
+        proxy_pass         $upstream_tp_test_backend/auth/login;
         proxy_http_version 1.1;
         proxy_set_header   Host              $host;
         proxy_set_header   X-Real-IP         $remote_addr;
@@ -251,7 +272,8 @@ server {
     location = /api/auth/register {
         limit_req zone=register_zone;
         limit_conn addr 10;
-        proxy_pass         http://backend-test:8000/auth/register;
+        set $upstream_tp_test_backend http://backend-test:8000;
+        proxy_pass         $upstream_tp_test_backend/auth/register;
         proxy_http_version 1.1;
         proxy_set_header   Host              $host;
         proxy_set_header   X-Real-IP         $remote_addr;
@@ -264,7 +286,8 @@ server {
         limit_req zone=api_general burst=40 nodelay;
         limit_conn addr 10;
         client_max_body_size 10M;
-        proxy_pass         http://backend-test:8000/;
+        set $upstream_tp_test_backend http://backend-test:8000;
+        proxy_pass         $upstream_tp_test_backend/;
         proxy_http_version 1.1;
         proxy_set_header   Host              $host;
         proxy_set_header   X-Real-IP         $remote_addr;
@@ -273,7 +296,8 @@ server {
     }
 
     location / {
-        proxy_pass         http://frontend-test:3000;
+        set $upstream_tp_test_frontend http://frontend-test:3000;
+        proxy_pass         $upstream_tp_test_frontend;
         proxy_http_version 1.1;
         proxy_set_header   Upgrade           $http_upgrade;
         proxy_set_header   Connection        "upgrade";
