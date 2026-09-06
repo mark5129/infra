@@ -101,3 +101,109 @@ certificate for the subdomain. Also add `smartcart.markusheuer.com` to the HTTP�
 redirect block's `server_name` line at the top of `default.conf.template`, and add
 `supermarketreceiptfinder_web-prod: {external: true}` to this file's `networks:` section
 alongside the existing `travelplanner_web-*` entries.
+
+## Renovation Tracker — prepared, not yet onboarded
+
+Domain assigned: `renovationtracker.markusheuer.com`. Its own compose stack
+(Postgres/GoTrue/PostgREST/Storage + the app) is written and has been
+verified end-to-end against a fresh volume — migrations replay cleanly,
+`docker compose up -d` brings every service healthy, and PostgREST serves
+the seeded demo project to anon. Steps 2-4 above haven't happened yet:
+
+- **DNS still points at Vercel.** `renovationtracker.markusheuer.com`
+  currently resolves to Vercel's edge, not this droplet — the app is still
+  live there. This needs to change first, and deliberately: it's a real
+  production cutover away from the app's current host, not just an infra
+  wiring step, and this box has no DigitalOcean API token / `terraform`
+  configured to do it automatically. Point the record at this droplet's
+  reserved IP via the DigitalOcean console (or provide credentials so it
+  can be done from here) before step 2 below.
+- Step 1 (first deploy, to create `renovation-tracker_web-renovationtracker`)
+  has effectively already happened via the local verification above, though
+  it was run standalone rather than through the not-yet-created
+  `.github/workflows/deploy.yml` CI path (added, but needs a self-hosted
+  runner + the `ENV_PROD` secret before it can run - see that file).
+- Steps 2-4 (cert SAN expansion, server block, edge reload) still need the
+  DNS cutover above to happen first, since step 2 requires the hostname to
+  already resolve here.
+
+Server block to add at step 3, once DNS points here and step 2's cert
+expansion has run for `renovationtracker.markusheuer.com`:
+
+```nginx
+server {
+    listen      443 ssl;
+    listen      [::]:443 ssl;
+    http2       on;
+    server_name renovationtracker.markusheuer.com;
+
+    ssl_certificate     /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
+
+    ssl_protocols             TLSv1.2 TLSv1.3;
+    ssl_ciphers               HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+    ssl_session_cache         shared:SSL:10m;
+    ssl_session_timeout       1d;
+
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+    add_header X-Content-Type-Options    "nosniff"                                      always;
+    add_header X-Frame-Options           "SAMEORIGIN"                                   always;
+    add_header X-XSS-Protection          "1; mode=block"                                always;
+    add_header Referrer-Policy           "strict-origin-when-cross-origin"              always;
+
+    resolver 127.0.0.11 valid=10s ipv6=off;
+
+    location /auth/v1/ {
+        set $upstream_rt_auth http://auth:9999/;
+        proxy_pass $upstream_rt_auth;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /rest/v1/ {
+        set $upstream_rt_rest http://rest:3000/;
+        proxy_pass $upstream_rt_rest;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /storage/v1/ {
+        set $upstream_rt_storage http://storage:5000/;
+        proxy_pass $upstream_rt_storage;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        client_max_body_size 50M;
+    }
+
+    location / {
+        set $upstream_rt_app http://renovation-tracker:3000;
+        proxy_pass $upstream_rt_app;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade           $http_upgrade;
+        proxy_set_header Connection        "upgrade";
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+```
+
+Path-based routing to `/auth/v1`, `/rest/v1`, `/storage/v1` here replaces
+the Kong gateway a full Supabase stack would normally run, matching the
+approach documented in renovation-tracker's own docker-compose.yml. Also
+add `renovationtracker.markusheuer.com` to the HTTP->HTTPS redirect
+block's `server_name` line, and
+`renovation-tracker_web-renovationtracker: {external: true}` to this
+file's `networks:` section.
