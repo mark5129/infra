@@ -203,8 +203,13 @@ server {
     add_header X-XSS-Protection          "1; mode=block"                                always;
     add_header Referrer-Policy           "strict-origin-when-cross-origin"              always;
 
+    # GoTrue/PostgREST/storage-api all serve unprefixed routes (/health, not
+    # /auth/v1/health) — a variable proxy_pass doesn't do the automatic
+    # prefix-stripping a literal proxy_pass URI would, so it's done explicitly
+    # here via rewrite before handing off to the (dynamically resolved) upstream.
     location /auth/v1/ {
-        set $upstream_rt_auth http://auth:9999/;
+        set $upstream_rt_auth http://auth:9999;
+        rewrite ^/auth/v1/(.*)$ /$1 break;
         proxy_pass $upstream_rt_auth;
         proxy_http_version 1.1;
         proxy_set_header Host              $host;
@@ -214,7 +219,8 @@ server {
     }
 
     location /rest/v1/ {
-        set $upstream_rt_rest http://rest:3000/;
+        set $upstream_rt_rest http://rest:3000;
+        rewrite ^/rest/v1/(.*)$ /$1 break;
         proxy_pass $upstream_rt_rest;
         proxy_http_version 1.1;
         proxy_set_header Host              $host;
@@ -224,7 +230,8 @@ server {
     }
 
     location /storage/v1/ {
-        set $upstream_rt_storage http://storage:5000/;
+        set $upstream_rt_storage http://storage:5000;
+        rewrite ^/storage/v1/(.*)$ /$1 break;
         proxy_pass $upstream_rt_storage;
         proxy_http_version 1.1;
         proxy_set_header Host              $host;
