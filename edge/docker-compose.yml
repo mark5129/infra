@@ -46,6 +46,7 @@ services:
       - web-test
       - web-portfolio
       - web-renovationtracker
+      - web-loopify
     deploy:
       resources:
         limits:
@@ -94,6 +95,9 @@ networks:
   web-renovationtracker:
     external: true
     name: renovation-tracker_web-renovationtracker
+  web-loopify:
+    external: true
+    name: loopify_web-loopify
 
 # ── Volumes ───────────────────────────────────────────────────────────────────
 volumes:

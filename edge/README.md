@@ -6,7 +6,12 @@ don't embed their own nginx/certbot.
 
 Currently serving: `markusheuer.com` / `www.markusheuer.com` (portfolio),
 `travelplanner.markusheuer.com` / `dev.markusheuer.com` / `test.markusheuer.com`
-(TravelPlanner).
+(TravelPlanner), `renovationtracker.markusheuer.com` (Renovation Tracker), and
+`loopifydemo.markusheuer.com` (Loopify demo).
+
+`dev`/`test` return 502 whenever TravelPlanner's dev/test stacks aren't running.
+That's the dynamic-resolver design working as intended rather than a fault — see
+the note at the top of `nginx/default.conf.template`.
 
 ## Onboarding a new project
 
@@ -102,30 +107,25 @@ redirect block's `server_name` line at the top of `default.conf.template`, and a
 `supermarketreceiptfinder_web-prod: {external: true}` to this file's `networks:` section
 alongside the existing `travelplanner_web-*` entries.
 
-## Renovation Tracker — prepared, not yet onboarded
+## Renovation Tracker — onboarded
 
-Domain assigned: `renovationtracker.markusheuer.com`. Its own compose stack
-(Postgres/GoTrue/PostgREST/Storage + the app) is written and has been
-verified end-to-end against a fresh volume — migrations replay cleanly,
-`docker compose up -d` brings every service healthy, and PostgREST serves
-the seeded demo project to anon. Steps 2-4 above haven't happened yet:
+`renovationtracker.markusheuer.com`, DNS cut over from Vercel to this droplet.
+Its server block proxies `/auth/v1`, `/rest/v1` and `/storage/v1` to GoTrue,
+PostgREST and storage-api respectively (with the path prefix stripped by an
+explicit `rewrite`, since a variable `proxy_pass` doesn't do that on its own),
+and everything else to the Next.js app.
 
-- **DNS still points at Vercel.** `renovationtracker.markusheuer.com`
-  currently resolves to Vercel's edge, not this droplet — the app is still
-  live there. This needs to change first, and deliberately: it's a real
-  production cutover away from the app's current host, not just an infra
-  wiring step, and this box has no DigitalOcean API token / `terraform`
-  configured to do it automatically. Point the record at this droplet's
-  reserved IP via the DigitalOcean console (or provide credentials so it
-  can be done from here) before step 2 below.
-- Step 1 (first deploy, to create `renovation-tracker_web-renovationtracker`)
-  has effectively already happened via the local verification above, though
-  it was run standalone rather than through the not-yet-created
-  `.github/workflows/deploy.yml` CI path (added, but needs a self-hosted
-  runner + the `ENV_PROD` secret before it can run - see that file).
-- Steps 2-4 (cert SAN expansion, server block, edge reload) still need the
-  DNS cutover above to happen first, since step 2 requires the hostname to
-  already resolve here.
+## Loopify demo — onboarded
+
+`loopifydemo.markusheuer.com`, on the `loopify_web-loopify` network. A single
+Next.js container — the demo keeps its flows in memory and calls the model from
+its own route handlers, so there's no API/storage split to route around and no
+database.
+
+Its `location /` raises `proxy_read_timeout`/`proxy_send_timeout` to 180s.
+Flow generation is a model call that can run past nginx's 60s default, and
+without that the browser gets a 504 while the request is still in flight
+upstream.
 
 Server block to add at step 3, once DNS points here and step 2's cert
 expansion has run for `renovationtracker.markusheuer.com`:
