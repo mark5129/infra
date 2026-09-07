@@ -30,7 +30,7 @@ limit_conn_zone $binary_remote_addr zone=addr:10m;
 server {
     listen      80;
     listen      [::]:80;
-    server_name $DOMAIN www.$DOMAIN $APP_DOMAIN dev.$DOMAIN test.$DOMAIN;
+    server_name $DOMAIN www.$DOMAIN $APP_DOMAIN dev.$DOMAIN test.$DOMAIN renovationtracker.markusheuer.com;
 
     limit_conn addr 10;
 
@@ -173,6 +173,78 @@ server {
         proxy_set_header   X-Real-IP         $remote_addr;
         proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
         proxy_set_header   X-Forwarded-Proto $scheme;
+    }
+}
+
+# ── HTTPS: Renovation Tracker – Production ────────────────────────────────────
+# No Kong/Envoy gateway: path-based routing to /auth/v1, /rest/v1, /storage/v1
+# replaces the Kong gateway a full Supabase stack would normally run, matching
+# the approach documented in renovation-tracker's own docker-compose.yml.
+server {
+    listen      443 ssl;
+    listen      [::]:443 ssl;
+    http2       on;
+    server_name renovationtracker.markusheuer.com;
+
+    limit_conn addr 10;
+
+    ssl_certificate     /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
+
+    ssl_protocols             TLSv1.2 TLSv1.3;
+    ssl_ciphers               HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+    ssl_session_cache         shared:SSL:10m;
+    ssl_session_timeout       1d;
+
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+    add_header X-Content-Type-Options    "nosniff"                                      always;
+    add_header X-Frame-Options           "SAMEORIGIN"                                   always;
+    add_header X-XSS-Protection          "1; mode=block"                                always;
+    add_header Referrer-Policy           "strict-origin-when-cross-origin"              always;
+
+    location /auth/v1/ {
+        set $upstream_rt_auth http://auth:9999/;
+        proxy_pass $upstream_rt_auth;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /rest/v1/ {
+        set $upstream_rt_rest http://rest:3000/;
+        proxy_pass $upstream_rt_rest;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /storage/v1/ {
+        set $upstream_rt_storage http://storage:5000/;
+        proxy_pass $upstream_rt_storage;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        client_max_body_size 50M;
+    }
+
+    location / {
+        set $upstream_rt_app http://renovation-tracker:3000;
+        proxy_pass $upstream_rt_app;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade           $http_upgrade;
+        proxy_set_header Connection        "upgrade";
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
     }
 }
 

@@ -45,6 +45,7 @@ services:
       - web-dev
       - web-test
       - web-portfolio
+      - web-renovationtracker
     deploy:
       resources:
         limits:
@@ -90,6 +91,9 @@ networks:
   web-portfolio:
     external: true
     name: web-portfolio
+  web-renovationtracker:
+    external: true
+    name: renovation-tracker_web-renovationtracker
 
 # ── Volumes ───────────────────────────────────────────────────────────────────
 volumes:
