@@ -47,6 +47,7 @@ services:
       - web-portfolio
       - web-renovationtracker
       - web-loopify
+      - web-meetup
     deploy:
       resources:
         limits:
@@ -98,6 +99,9 @@ networks:
   web-loopify:
     external: true
     name: loopify_web-loopify
+  web-meetup:
+    external: true
+    name: meetupmvp_web-meetup
 
 # ── Volumes ───────────────────────────────────────────────────────────────────
 volumes:
