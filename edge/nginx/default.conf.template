@@ -464,6 +464,9 @@ server {
 
     location /api/ {
         limit_req zone=api_general burst=40 nodelay;
+        # Photo uploads (MeetupMVP #23) allow up to 10 MB per file; 12m leaves
+        # headroom for multipart overhead over nginx's 1 MB default.
+        client_max_body_size 12m;
         # set must come before rewrite: `break` stops the rest of the rewrite
         # module's directives (set included) from running in this location.
         set $upstream_meetup_api http://meetup-api:4000;
